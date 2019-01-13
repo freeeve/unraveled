@@ -15,6 +15,7 @@ describe("Trie", () => {
     const word = 'hello';
     const trie = new Trie();
     trie.insert(word, data);
-    expect(true).toBeTruthy()
+    const actual = trie.search(word);
+    expect(actual).toEqual(data);
   });
 });

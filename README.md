@@ -1,9 +1,18 @@
 # Unraveled
-[![Travis](https://img.shields.io/travis/freeeve/unraveled.svg)](https://travis-ci.org/freeeve/unraveled)
+[![Travis](https://api.travis-ci.com/freeeve/unraveled.svg?branch=master)](https://travis-ci.com/freeeve/unraveled)
 [![Coveralls](https://img.shields.io/coveralls/freeeve/unraveled.svg)](https://coveralls.io/github/freeeve/unraveled)
 
-## Credits
+After searching through what seemed like countless trie implementations for javascript,
+I decided to write my own, as I suppose each of those implementation's creators did.
 
-Made with :heart: by [@freeeve](https://twitter.com/freeeve) and all these wonderful contributors ([emoji key](https://github.com/kentcdodds/all-contributors#emoji-key)):
+This is a trie map where the basic API is simple, similar to a map:
 
-This project follows the [all-contributors](https://github.com/kentcdodds/all-contributors) specification. Contributions of any kind are welcome!
+```typescript 
+import {Trie} from 'unraveled';
+
+const trie = new Trie();
+trie.put('hello', 'world');
+const data = trie.get('hello');
+console.out(data); // 'hello'
+```
+

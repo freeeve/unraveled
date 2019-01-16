@@ -71,15 +71,6 @@ describe('Trie', () => {
     expect(actual).toEqual(data);
   });
 
-  /*
-  it("should fail to insert keys >255 bytes", () => {
-    const data = Buffer.from('world');
-    const word = '0123456789'.repeat(26);
-    const trie = new Trie();
-    expect(trie.insertBuffer(word, data)).toThrowError('key size too large (>255 bytes)');
-  });
-  */
-
   it('should be able to handle a simple example', () => {
     const words = [
       {

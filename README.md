@@ -19,24 +19,47 @@ const data = trie.search(word);
 ```
 
 ## Usage
+One use case.
 ```typescript 
 import {Trie} from 'unraveled';
 
+const words = [{
+  word: 'rubens',
+  def: 'pt`being red; red, reddish, ruddy~(growing) red, reddening, blushing'
+},{
+  word: 'ruber',
+  def: 'a`red (colour); ruddy'
+},{
+  word: 'rubicon',
+  def: 'n`a limit that when exceeded, or an action that when taken, cannot be reversed.'
+},{
+  word: 'rubicundus',
+  def: 'a`red, ruddy, rubicund.'
+}];
 const trie = new Trie();
-trie.insert('hello', 'world');
-const data = trie.search(word);
+words.forEach(word => {
+trie.insert(word.word, word.def);
+});
+const actual = trie.search('rube');
+expect(actual).toBeUndefined();
+words.forEach(word => {
+const actual = trie.search(word.word);
+expect(actual).toEqual(word.def);
+});
 ```
 
 ## Benchmarks
-The trie takes somewhat less space, on the order of 30%, depending on data.
+The trie takes somewhat less space, on the order of 30%, depending on data. 
+The test data was 41MB in encoded trie vs 67MB in hash.
+
 I'm planning to implement some compression in the future, which should improve this.
 Also, currently, the trie is built in memory and then dumped to a buffer,
 instead of being built directly in a buffer. I'm hoping that it will be possible
 to do it directly in the buffer, to avoid the initial memory load. 
 
 It's a fair bit slower than the hash, currently:   
-insert: ~20x slower (including encoding); avg 6.154μs for trie vs 0.13799999999999998μs for hash  
-search: ~43x slower; avg 6.024μs for trie vs 0.13799999999999998μs for hash  
+insert: ~20x slower tha hash (including encoding); avg 6.154μs for trie vs 0.538μs for hash  
+search: ~43x slower than hash; avg 6.024μs for trie vs 0.138μs for hash  
 
 ```
 [trie] done inserting 1000000 word test, totTime:6154ms, avg:6.154μs

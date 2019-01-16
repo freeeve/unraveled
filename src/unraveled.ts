@@ -11,7 +11,7 @@ interface SearchEntriesResult {
 export default class Trie {
   private readonly allocSize = 1024 * 512;
   private buffer: Buffer;
-  public trieRoot?: Node = { children: new Map<string, Node>() };
+  public trieRoot: Node = { children: new Map<string, Node>() };
   public encoded = false;
 
   constructor(allocSizeKb?: number) {
@@ -32,7 +32,7 @@ export default class Trie {
 
   public insertBuffer(word: string, data: Buffer) {
     const wordBuff = Buffer.from(word);
-    this.trieInsert(wordBuff, data, this.trieRoot!!);
+    this.trieInsert(wordBuff, data, this.trieRoot);
   }
 
   private trieInsert(wordBuff: Buffer, data: Buffer, node: Node) {
@@ -82,7 +82,7 @@ export default class Trie {
     if (this.trieRoot) {
       this.encodeHelper(this.trieRoot, 0);
       this.encoded = true;
-      this.trieRoot = undefined;
+      this.trieRoot = { children: new Map<string, Node>() };
     }
   }
 

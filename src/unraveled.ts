@@ -13,6 +13,7 @@ export default class Trie {
   private buffer: Buffer;
   public trieRoot: Node = { children: new Map<string, Node>() };
   public encoded = false;
+  private noassert = true;
 
   constructor(allocSizeKb?: number) {
     if (allocSizeKb) {
@@ -56,19 +57,19 @@ export default class Trie {
 
   private writeByte(byte: number, offset: number): number {
     this.ensureSize(1, offset);
-    this.buffer.writeUInt8(byte, offset, false);
+    this.buffer.writeUInt8(byte, offset, this.noassert);
     return 1;
   }
 
   private writeShort(short: number, offset: number): number {
     this.ensureSize(2, offset);
-    this.buffer.writeUInt16LE(short, offset, false);
+    this.buffer.writeUInt16LE(short, offset, this.noassert);
     return 2;
   }
 
   private writeInt(i: number, offset: number): number {
     this.ensureSize(4, offset);
-    this.buffer.writeInt32LE(i, offset, false);
+    this.buffer.writeInt32LE(i, offset, this.noassert);
     return 4;
   }
 
@@ -158,7 +159,7 @@ export default class Trie {
   }
 
   private getDataEntry(searchBuff: Buffer, offset: number): Buffer | undefined {
-    let entryCount = searchBuff.readInt16LE(offset, false);
+    let entryCount = searchBuff.readInt16LE(offset, this.noassert);
     offset += 2;
     if (entryCount === 0) {
       return undefined;
@@ -166,7 +167,7 @@ export default class Trie {
     let entryIdx = 0;
     let curKeyLength = 0;
     do {
-      curKeyLength = searchBuff.readUInt8(offset, false);
+      curKeyLength = searchBuff.readUInt8(offset, this.noassert);
       offset += 1;
       offset += curKeyLength;
       offset += 4; // skip offset to next record
@@ -178,18 +179,18 @@ export default class Trie {
     }
     // backtrack to offset (skipped in loop above)
     offset -= 4;
-    let dataLength = searchBuff.readInt32LE(offset, false);
+    let dataLength = searchBuff.readInt32LE(offset, this.noassert);
     offset += 4;
     return searchBuff.slice(offset, offset + dataLength);
   }
 
   private searchEntries(wordBuff: Buffer, searchBuff: Buffer, offset: number): SearchEntriesResult {
-    const entryCount = searchBuff.readInt16LE(offset, false);
+    const entryCount = searchBuff.readInt16LE(offset, this.noassert);
     offset += 2;
     let matchCount = 0;
     let entryIdx = 0;
     do {
-      let curKeyLength = searchBuff.readUInt8(offset, false);
+      let curKeyLength = searchBuff.readUInt8(offset, this.noassert);
       offset += 1;
       let curKey = searchBuff.slice(offset, offset + curKeyLength);
       offset += curKeyLength;
@@ -203,7 +204,7 @@ export default class Trie {
     }
     // backtrack to offset (skipped in loop above)
     offset -= 4;
-    const nextRecordOffset = searchBuff.readInt32LE(offset, false);
+    const nextRecordOffset = searchBuff.readInt32LE(offset, this.noassert);
     return { matchCount, nextRecordOffset };
   }
 

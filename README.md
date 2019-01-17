@@ -58,7 +58,7 @@ instead of being built directly in a buffer. I'm hoping that it will be possible
 to do it directly in the buffer, to avoid the initial memory load. 
 
 It's a fair bit slower than the hash, currently:   
-insert: ~20x slower tha hash (including encoding); avg 6.154μs for trie vs 0.538μs for hash  
+insert: ~20x slower than hash (including encoding); avg 6.154μs for trie vs 0.538μs for hash  
 search: ~43x slower than hash; avg 6.024μs for trie vs 0.138μs for hash  
 
 ```

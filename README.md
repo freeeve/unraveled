@@ -38,13 +38,13 @@ const words = [{
 }];
 const trie = new Trie();
 words.forEach(word => {
-trie.insert(word.word, word.def);
+  trie.insert(word.word, word.def);
 });
 const actual = trie.search('rube');
 expect(actual).toBeUndefined();
 words.forEach(word => {
-const actual = trie.search(word.word);
-expect(actual).toEqual(word.def);
+  const actual = trie.search(word.word);
+  expect(actual).toEqual(word.def);
 });
 ```
 

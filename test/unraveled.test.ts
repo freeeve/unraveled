@@ -13,7 +13,7 @@ describe('Trie', () => {
   it('should be able to specify allocSize', () => {
     const data = Buffer.from('world');
     const word = 'hello';
-    const trie = new Trie(256);
+    const trie = new Trie({ allocSizeKb: 256 });
     trie.insertBuffer(word, data);
     const actual = trie.searchBuffer(word);
     expect(actual).toEqual(data);
@@ -103,52 +103,75 @@ describe('Trie', () => {
   });
 
   it('should be able to handle a fair bit of data', () => {
-    const wordCount = 100000;
-    const words = Array.from(Array(wordCount).keys()).map(x => '' + x);
-    const trie = new Trie();
-    let startTime = new Date().getTime();
-    words.forEach(word => {
-      const data = word.repeat(5);
-      trie.insert(word, data);
-    });
-    const insertTime = new Date().getTime() - startTime;
-    console.log(
-      `[trie] done inserting ${wordCount} word test, totTime:${insertTime}ms, avg:${(insertTime /
-        wordCount) *
-        1000}μs`
-    );
-    startTime = new Date().getTime();
-    trie.encode();
-    const endcodeTime = new Date().getTime() - startTime;
-    console.log(
-      `[trie] done encoding ${wordCount} word test, totTime:${endcodeTime}ms, avg:${(endcodeTime /
-        wordCount) *
-        1000}μs`
-    );
-    console.log(
-      `[trie] encoded trie memory consumption: ${Math.round(trie.getBufferSize() / 1024 / 1024)}MB`
-    );
-    startTime = new Date().getTime();
-    let searchTime;
-    words.forEach((word, idx) => {
-      const actual = trie.search(word);
-      const data = word.repeat(5);
-      expect(actual).toEqual(data);
-      if (idx % 100000 === 0) {
-        searchTime = new Date().getTime() - startTime;
-        console.log(
-          `[trie] progress search/confirm ${word} word test, totTime:${searchTime}ms, avg:${(searchTime /
-            wordCount) *
-            1000}μs`
-        );
-      }
-    });
-    searchTime = new Date().getTime() - startTime;
-    console.log(
-      `[trie] done search/confirm ${wordCount} word test, totTime:${searchTime}ms, avg:${(searchTime /
-        wordCount) *
-        1000}μs`
-    );
+    try {
+      /* failure case...
+      const wordCount = 100000;
+      const words = Array.from(Array(wordCount).keys()).map(x => '' + x);
+      const trie = new Trie({allocSizeKb: 4, cacheSizeKb: 8, 12});
+      */
+      const wordCount = 100000;
+      const words = Array.from(Array(wordCount).keys()).map(x => '' + x);
+      const trie = new Trie({ allocSizeKb: 8, cacheSizeKb: 4096 });
+      let startTime = new Date().getTime();
+      words.forEach(word => {
+        const data = word.repeat(5);
+        trie.insert(word, data);
+      });
+      const insertTime = new Date().getTime() - startTime;
+      console.log(
+        `[trie] done inserting ${wordCount} word test, totTime:${insertTime}ms, avg:${(insertTime /
+          wordCount) *
+          1000}μs`
+      );
+      startTime = new Date().getTime();
+      trie.encode();
+      const endcodeTime = new Date().getTime() - startTime;
+      console.log(
+        `[trie] done encoding ${wordCount} word test, totTime:${endcodeTime}ms, avg:${(endcodeTime /
+          wordCount) *
+          1000}μs`
+      );
+      console.log(
+        `[trie] encoded trie memory consumption: ${Math.round(
+          trie.getBufferMemoryUsage() / 1024
+        )}KB`
+      );
+      trie.compact();
+      console.log(
+        `[trie] encoded trie memory after compact: ${Math.round(
+          trie.getBufferMemoryUsage() / 1024
+        )}KB`
+      );
+      startTime = new Date().getTime();
+      let searchTime;
+      words.forEach((word, idx) => {
+        const i = getRandomInt(0, wordCount - 1);
+        const actual = trie.search(words[i]);
+        const data = words[i].repeat(5);
+        expect(actual).toEqual(data);
+        if ((idx + 1) % 10000 === 0) {
+          searchTime = new Date().getTime() - startTime;
+          console.log(
+            `[trie] progress search/confirm ${idx +
+              1} word test, totTime:${searchTime}ms, avg:${(searchTime / (idx + 1)) * 1000}μs`
+          );
+          console.log(
+            `[trie] current trie memory while searching: ${Math.round(
+              trie.getBufferMemoryUsage() / 1024
+            )}KB`
+          );
+        }
+      });
+      searchTime = new Date().getTime() - startTime;
+      console.log(
+        `[trie] done search/confirm ${wordCount} word test, totTime:${searchTime}ms, avg:${(searchTime /
+          wordCount) *
+          1000}μs`
+      );
+    } catch (e) {
+      console.log(e);
+      throw new Error(e);
+    }
   });
 
   it('js hashtable comparison', () => {
@@ -166,18 +189,18 @@ describe('Trie', () => {
         wordCount) *
         1000}μs`
     );
-    console.log(`[hash] memory consumption: ${sizeof(hash) / 1024 / 1024}MB`);
+    console.log(`[hash] memory consumption: ${sizeof(hash) / 1024}KB`);
     startTime = new Date().getTime();
     words.forEach((word, idx) => {
-      const actual = hash[word];
-      const data = word.repeat(5);
+      const i = getRandomInt(0, wordCount - 1);
+      const actual = hash[words[i]];
+      const data = words[i].repeat(5);
       expect(actual).toEqual(data);
-      if (idx % 100000 === 0) {
+      if ((idx + 1) % 10000 === 0) {
         searchTime = new Date().getTime() - startTime;
         console.log(
-          `[hash] progress search/confirm ${word} word test, totTime:${searchTime}ms, avg:${(searchTime /
-            wordCount) *
-            1000}μs`
+          `[hash] progress search/confirm ${idx +
+            1} word test, totTime:${searchTime}ms, avg:${(searchTime / (idx + 1)) * 1000}μs`
         );
       }
     });
@@ -188,4 +211,10 @@ describe('Trie', () => {
         1000}μs`
     );
   });
+
+  function getRandomInt(min: number, max: number): number {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
 });

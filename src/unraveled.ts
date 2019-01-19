@@ -1,6 +1,14 @@
-export interface Node {
+import { Bufr } from 'bufr';
+import Utils from './utils';
+
+interface Node {
   children: Map<string, Node>;
   data?: Buffer;
+}
+
+export interface TrieOptions {
+  allocSizeKb?: number;
+  cacheSizeKb?: number;
 }
 
 interface SearchEntriesResult {
@@ -9,21 +17,36 @@ interface SearchEntriesResult {
 }
 
 export default class Trie {
-  private readonly allocSize = 1024 * 512;
-  private buffer: Buffer;
+  private readonly allocSize = 1024 * 16;
+  private readonly cacheSize = 1024 * 1024;
+  private buffer: Bufr;
   public trieRoot: Node = { children: new Map<string, Node>() };
   public encoded = false;
   private noassert = true;
 
-  constructor(allocSizeKb?: number) {
-    if (allocSizeKb) {
-      this.allocSize = 1024 * allocSizeKb;
+  constructor(options?: TrieOptions) {
+    if (options) {
+      if (options.allocSizeKb) {
+        this.allocSize = options.allocSizeKb * 1024;
+      }
+      if (options.cacheSizeKb) {
+        this.cacheSize = options.cacheSizeKb * 1024;
+      } else {
+        this.cacheSize = this.allocSize * 16;
+      }
     }
-    this.buffer = Buffer.alloc(this.allocSize);
+    this.buffer = new Bufr({
+      allocSizeKb: this.allocSize / 1024,
+      cacheSizeKb: this.cacheSize / 1024
+    });
   }
 
-  public getBufferSize() {
-    return this.buffer.length;
+  public compact() {
+    return this.buffer.compressAll();
+  }
+
+  public getBufferMemoryUsage(): number {
+    return this.buffer.totalSize;
   }
 
   public insert(word: string, data: string) {
@@ -50,9 +73,11 @@ export default class Trie {
   }
 
   private ensureSize(size: number, offset: number) {
+    /*
     while (this.buffer.length < offset + size) {
       this.resizeBuffer();
     }
+    */
   }
 
   private writeByte(byte: number, offset: number): number {
@@ -75,7 +100,8 @@ export default class Trie {
 
   private writeBuffer(buffer: Buffer, offset: number): number {
     this.ensureSize(buffer.length, offset);
-    buffer.copy(this.buffer, offset);
+    // buffer.copy(this.buffer, offset);
+    this.buffer.writeBuffer(buffer, offset);
     return buffer.length;
   }
 
@@ -158,7 +184,7 @@ export default class Trie {
     return matchCount;
   }
 
-  private getDataEntry(searchBuff: Buffer, offset: number): Buffer | undefined {
+  private getDataEntry(searchBuff: Bufr, offset: number): Buffer | undefined {
     let entryCount = searchBuff.readInt16LE(offset, this.noassert);
     offset += 2;
     if (entryCount === 0) {
@@ -181,10 +207,11 @@ export default class Trie {
     offset -= 4;
     let dataLength = searchBuff.readInt32LE(offset, this.noassert);
     offset += 4;
-    return searchBuff.slice(offset, offset + dataLength);
+    // return searchBuff.slice(offset, offset + dataLength);
+    return searchBuff.subBuffer(offset, offset + dataLength);
   }
 
-  private searchEntries(wordBuff: Buffer, searchBuff: Buffer, offset: number): SearchEntriesResult {
+  private searchEntries(wordBuff: Buffer, searchBuff: Bufr, offset: number): SearchEntriesResult {
     const entryCount = searchBuff.readInt16LE(offset, this.noassert);
     offset += 2;
     let matchCount = 0;
@@ -192,7 +219,8 @@ export default class Trie {
     do {
       let curKeyLength = searchBuff.readUInt8(offset, this.noassert);
       offset += 1;
-      let curKey = searchBuff.slice(offset, offset + curKeyLength);
+      // let curKey = searchBuff.slice(offset, offset + curKeyLength);
+      let curKey = searchBuff.subBuffer(offset, offset + curKeyLength);
       offset += curKeyLength;
       // skip offset to next record
       offset += 4;
@@ -208,7 +236,8 @@ export default class Trie {
     return { matchCount, nextRecordOffset };
   }
 
-  private searchHelper(wordBuff: Buffer, searchBuff: Buffer, offset: number): Buffer | undefined {
+  private searchHelper(wordBuff: Buffer, searchBuff: Bufr, offset: number): Buffer | undefined {
+    // Utils.debugHeader(searchBuff.toBuffer(), offset);
     if (wordBuff.length === 0) {
       return this.getDataEntry(searchBuff, offset);
     }
@@ -221,8 +250,10 @@ export default class Trie {
   }
 
   private resizeBuffer() {
+    /*
     const newBuffer = Buffer.alloc(this.buffer.length + this.allocSize);
     this.buffer.copy(newBuffer);
     this.buffer = newBuffer;
+    */
   }
 }

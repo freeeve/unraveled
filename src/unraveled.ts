@@ -1,7 +1,7 @@
 import { Bufr } from 'bufr';
 import Utils from './utils';
 
-interface Node {
+export interface Node {
   children: Map<string, Node>;
   data?: Buffer;
 }

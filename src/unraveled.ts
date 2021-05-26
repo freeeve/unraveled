@@ -1,7 +1,7 @@
 import { Bufr } from 'bufr';
 import Utils from './utils';
 
-interface Node {
+export interface Node {
   children: Map<string, Node>;
   data?: Buffer;
 }
@@ -19,7 +19,8 @@ interface SearchEntriesResult {
 export default class Trie {
   private readonly allocSize = 1024 * 16;
   private readonly cacheSize = 1024 * 1024;
-  private buffer: Bufr;
+  private data: Bufr;
+  private trie: Bufr;
   public trieRoot: Node = { children: new Map<string, Node>() };
   public encoded = false;
   private noassert = true;
@@ -35,18 +36,39 @@ export default class Trie {
         this.cacheSize = this.allocSize * 16;
       }
     }
-    this.buffer = new Bufr({
-      allocSizeKb: this.allocSize / 1024,
-      cacheSizeKb: this.cacheSize / 1024
+    /*
+    this.data = new Bufr({
+      allocSizeKb: 4,
+      cacheSizeKb: 64,
+      compression: 'snappy'
+    });
+    this.trie = new Bufr({
+      allocSizeKb: 2,
+      cacheSizeKb: 128,
+      compression: 'snappy'
+    });
+    */
+
+    this.data = new Bufr({
+      allocSizeKb: 64,
+      cacheSizeKb: 4096,
+      compression: 'snappy'
+    });
+    this.trie = new Bufr({
+      allocSizeKb: 8,
+      cacheSizeKb: 4096 * 4,
+      compression: 'snappy'
     });
   }
 
   public compact() {
-    return this.buffer.compressAll();
+    this.data.compressAll();
+    this.trie.compressAll();
   }
 
   public getBufferMemoryUsage(): number {
-    return this.buffer.totalSize;
+    // console.log(`data size: ${this.data.totalSize}, trie size: ${this.trie.totalSize}`)
+    return this.data.totalSize + this.trie.totalSize;
   }
 
   public insert(word: string, data: string) {
@@ -72,39 +94,6 @@ export default class Trie {
     }
   }
 
-  private ensureSize(size: number, offset: number) {
-    /*
-    while (this.buffer.length < offset + size) {
-      this.resizeBuffer();
-    }
-    */
-  }
-
-  private writeByte(byte: number, offset: number): number {
-    this.ensureSize(1, offset);
-    this.buffer.writeUInt8(byte, offset, this.noassert);
-    return 1;
-  }
-
-  private writeShort(short: number, offset: number): number {
-    this.ensureSize(2, offset);
-    this.buffer.writeUInt16LE(short, offset, this.noassert);
-    return 2;
-  }
-
-  private writeInt(i: number, offset: number): number {
-    this.ensureSize(4, offset);
-    this.buffer.writeInt32LE(i, offset, this.noassert);
-    return 4;
-  }
-
-  private writeBuffer(buffer: Buffer, offset: number): number {
-    this.ensureSize(buffer.length, offset);
-    // buffer.copy(this.buffer, offset);
-    this.buffer.writeBuffer(buffer, offset);
-    return buffer.length;
-  }
-
   public encode() {
     if (this.trieRoot) {
       this.encodeHelper(this.trieRoot, 0);
@@ -117,45 +106,38 @@ export default class Trie {
     const startOffset = offset;
     let recordSize = 0;
     let entryCount = node.children ? node.children.size : 0;
-    entryCount += node.data ? 1 : 0;
     // write entry count
-    offset += this.writeShort(entryCount, offset);
-    let keySizeTotal = 0;
-    node.children.forEach((value: Node, key: string) => {
-      const bufferKey = Buffer.from(key, 'base64');
-      keySizeTotal += 1;
-      keySizeTotal += bufferKey.length;
-      keySizeTotal += 4;
-    });
-    let dataLength = 0;
-    if (node.data) {
-      let dataOffset = offset + keySizeTotal;
-      dataLength = node.data.length + 5;
-      // write size 0 for empty key (data)
-      dataOffset += this.writeByte(0, dataOffset);
-      // write data length size
-      dataOffset += this.writeInt(node.data.length, dataOffset);
-      // write data
-      this.writeBuffer(node.data, dataOffset);
-    }
-    let headerSize = 2 + keySizeTotal + dataLength;
+    offset += this.trie.writeUInt16LE(entryCount, offset);
+    let keySizeTotal = entryCount * 5;
+    let headerSize = 2 + keySizeTotal + 4;
 
     recordSize += headerSize;
     let childOffset = 0;
     node.children.forEach((value: Node, key: string) => {
       const bufferKey = Buffer.from(key, 'base64');
-      // write key length
-      offset += this.writeByte(bufferKey.length, offset);
       // write key
-      offset += this.writeBuffer(bufferKey, offset);
+      offset += this.trie.writeBuffer(bufferKey, offset);
       let thisChildOffset = startOffset + headerSize + childOffset;
       // write offset for child
-      offset += this.writeInt(thisChildOffset, offset);
+      offset += this.trie.writeUInt32LE(thisChildOffset, offset);
       // recurse!
       let childSize = this.encodeHelper(value, thisChildOffset);
       childOffset += childSize;
       recordSize += childSize;
     });
+
+    if (node.data) {
+      // write data offset
+      offset += this.trie.writeInt32LE(this.data.length, offset);
+      // write data length
+      this.data.writeUInt32LE(node.data.length, this.data.length);
+      // write data
+      this.data.writeBuffer(node.data, this.data.length);
+    } else {
+      // write -1 offset when data doesn't exist
+      offset += this.trie.writeInt32LE(-1, offset);
+    }
+    // Utils.debugHeader(this.data, this.trie, startOffset);
     return recordSize;
   }
 
@@ -171,7 +153,7 @@ export default class Trie {
     if (!this.encoded) {
       this.encode();
     }
-    return this.searchHelper(Buffer.from(word), this.buffer, 0);
+    return this.searchHelper(Buffer.from(word), 0);
   }
 
   private prefixMatch(bufa: Buffer, bufb: Buffer): number {
@@ -184,76 +166,55 @@ export default class Trie {
     return matchCount;
   }
 
-  private getDataEntry(searchBuff: Bufr, offset: number): Buffer | undefined {
-    let entryCount = searchBuff.readInt16LE(offset, this.noassert);
+  private getDataEntry(offset: number): Buffer | undefined {
+    let entryCount = this.trie.readUInt16LE(offset, this.noassert);
     offset += 2;
-    if (entryCount === 0) {
+    offset += entryCount * 5;
+    let dataOffset = this.trie.readInt32LE(offset, this.noassert);
+    if (dataOffset === -1) {
       return undefined;
     }
-    let entryIdx = 0;
-    let curKeyLength = 0;
-    do {
-      curKeyLength = searchBuff.readUInt8(offset, this.noassert);
-      offset += 1;
-      offset += curKeyLength;
-      offset += 4; // skip offset to next record
-      entryIdx += 1;
-    } while (curKeyLength !== 0 && entryIdx < entryCount);
-    // exhausted search and no data
-    if (curKeyLength > 0) {
-      return undefined;
-    }
-    // backtrack to offset (skipped in loop above)
-    offset -= 4;
-    let dataLength = searchBuff.readInt32LE(offset, this.noassert);
-    offset += 4;
-    // return searchBuff.slice(offset, offset + dataLength);
-    return searchBuff.subBuffer(offset, offset + dataLength);
+    let dataLength = this.data.readUInt32LE(dataOffset, this.noassert);
+    dataOffset += 4;
+    return this.data.subBuffer(dataOffset, dataOffset + dataLength);
   }
 
-  private searchEntries(wordBuff: Buffer, searchBuff: Bufr, offset: number): SearchEntriesResult {
-    const entryCount = searchBuff.readInt16LE(offset, this.noassert);
+  private searchEntries(wordBuff: Buffer, offset: number): SearchEntriesResult {
+    const entryCount = this.trie.readUInt16LE(offset, this.noassert);
     offset += 2;
     let matchCount = 0;
     let entryIdx = 0;
-    do {
-      let curKeyLength = searchBuff.readUInt8(offset, this.noassert);
-      offset += 1;
+    while (entryIdx < entryCount) {
       // let curKey = searchBuff.slice(offset, offset + curKeyLength);
-      let curKey = searchBuff.subBuffer(offset, offset + curKeyLength);
-      offset += curKeyLength;
+      let curKey = this.trie.subBuffer(offset, offset + 1);
+      offset += 1;
       // skip offset to next record
       offset += 4;
       matchCount = this.prefixMatch(wordBuff, curKey);
+      if (matchCount > 0) {
+        break;
+      }
       entryIdx += 1;
-    } while (matchCount === 0 && entryIdx < entryCount);
+    }
     if (matchCount === 0) {
       return { matchCount: -1, nextRecordOffset: -1 };
     }
     // backtrack to offset (skipped in loop above)
     offset -= 4;
-    const nextRecordOffset = searchBuff.readInt32LE(offset, this.noassert);
+    const nextRecordOffset = this.trie.readUInt32LE(offset, this.noassert);
     return { matchCount, nextRecordOffset };
   }
 
-  private searchHelper(wordBuff: Buffer, searchBuff: Bufr, offset: number): Buffer | undefined {
-    // Utils.debugHeader(searchBuff.toBuffer(), offset);
+  private searchHelper(wordBuff: Buffer, offset: number): Buffer | undefined {
+    // Utils.debugHeader(this.data, this.trie, offset);
     if (wordBuff.length === 0) {
-      return this.getDataEntry(searchBuff, offset);
+      return this.getDataEntry(offset);
     }
-    const { matchCount, nextRecordOffset } = this.searchEntries(wordBuff, searchBuff, offset);
+    const { matchCount, nextRecordOffset } = this.searchEntries(wordBuff, offset);
     if (matchCount === -1) {
       return undefined;
     } else {
-      return this.searchHelper(wordBuff.slice(matchCount), searchBuff, nextRecordOffset);
+      return this.searchHelper(wordBuff.slice(matchCount), nextRecordOffset);
     }
-  }
-
-  private resizeBuffer() {
-    /*
-    const newBuffer = Buffer.alloc(this.buffer.length + this.allocSize);
-    this.buffer.copy(newBuffer);
-    this.buffer = newBuffer;
-    */
   }
 }

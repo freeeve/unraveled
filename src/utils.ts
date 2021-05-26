@@ -1,4 +1,5 @@
 import { Node } from './unraveled';
+import { Bufr } from 'bufr';
 /* istanbul ignore function */
 export default class Utils {
   private static toObject(node: Node) {
@@ -19,37 +20,31 @@ export default class Utils {
     return JSON.stringify(Utils.toObject(node));
   }
 
-  public static debugHeader(buffer: Buffer, offset: number) {
+  public static debugHeader(data: Bufr, trie: Bufr, offset: number) {
     const header: any = { offset };
-    header.entryCount = buffer.readInt16LE(offset, false);
+    header.entryCount = trie.readUInt16LE(offset, false);
     if (header.entryCount < 0) {
       header.entryCount *= -1;
     }
     offset += 2;
     header.keys = [];
     let entryIdx = 0;
-    do {
+    while (entryIdx < header.entryCount) {
       const key: any = {};
-      key.length = buffer.readUInt8(offset, false);
+      key.value = trie.subBuffer(offset, offset + 1).toString();
       offset += 1;
-      if (key.length === 0) {
-        header.dataLength = buffer.readInt32LE(offset, false);
-        offset += 4;
-        if (header.dataLength < 300) {
-          header.data = Buffer.from(buffer.slice(offset, offset + header.dataLength)).toString();
-        } else {
-          header.data = 'busted';
-        }
-        break;
-      }
-      key.value = buffer.slice(offset, offset + key.length).toString();
-      offset += key.length;
-      key.nextRecordOffset = buffer.readInt32LE(offset, false);
-      this.debugHeader(buffer, key.nextRecordOffset);
+      key.nextRecordOffset = trie.readUInt32LE(offset, false);
+      // this.debugHeader(buffer, key.nextRecordOffset);
       offset += 4; // skip offset to next record
       entryIdx += 1;
       header.keys.push(key);
-    } while (entryIdx < header.entryCount);
+    }
+    let dataOffset = trie.readInt32LE(offset);
+    if (dataOffset !== -1) {
+      let dataLength = data.readUInt32LE(dataOffset);
+      dataOffset += 4;
+      header.data = data.subBuffer(dataOffset, dataOffset + dataLength);
+    }
     console.log(JSON.stringify(header));
   }
 }
